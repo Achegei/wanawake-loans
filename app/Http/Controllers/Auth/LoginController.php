@@ -14,27 +14,51 @@ class LoginController extends Controller
     }
 
     public function store(Request $request)
-    {
-        $credentials = $request->validate([
-            'phone' => 'required',
-            'password' => 'required',
-        ]);
+{
+    $credentials = $request->validate([
+        'phone' => 'required',
+        'password' => 'required',
+    ]);
 
-        if (Auth::attempt($credentials)) {
-            $request->session()->regenerate();
+    if (Auth::attempt($credentials)) {
+        $request->session()->regenerate();
 
-            if (Auth::user()->is_admin) {
-                return redirect('/admin/dashboard');
-            }
+        $user = Auth::user();
 
-            return redirect('/dashboard');
+        // Admin check
+        if ($user->is_admin) {
+            return redirect('/admin/dashboard');
         }
 
-        return back()->withErrors([
-            'phone' => 'Invalid credentials',
-        ]);
+        // 🔥 CORE LOGIC STARTS HERE
+
+        // 1. No loan at all → go to onboarding
+        if (!$user->loan) {
+            return redirect()->route('onboarding.show');
+        }
+
+        // 2. Has loan but NOT disbursed → still onboarding stage
+        if (!$user->loan->disbursed_at) {
+            return redirect()->route('onboarding.show');
+        }
+
+        // 3. Loan active → go dashboard
+        if ($user->loan->status === 'active') {
+            return redirect()->route('dashboard');
+        }
+
+        // 4. Loan cleared → allow re-application later (optional)
+        if ($user->loan->status === 'paid') {
+            return redirect()->route('dashboard');
+        }
+
+        return redirect()->route('dashboard');
     }
 
+    return back()->withErrors([
+        'phone' => 'Invalid credentials',
+    ]);
+}
     public function logout(Request $request)
     {
         Auth::logout();

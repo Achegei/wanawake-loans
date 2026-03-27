@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use App\Models\LoanNextOfKin;
 
 class OnboardingController extends Controller
 {
@@ -12,7 +11,7 @@ class OnboardingController extends Controller
     {
         $user = Auth::user();
 
-        // Load current loan and next-of-kin progress if exists
+        // Load current loan and next-of-kin if exists
         $loan = $user->loan ?? null;
         $nextOfKin = $loan ? $loan->nextOfKin : [];
 
@@ -20,39 +19,64 @@ class OnboardingController extends Controller
     }
 
     public function store(Request $request)
-    {
-        $user = Auth::user();
+{
+    $user = Auth::user();
 
-        // Validate loan and next-of-kin data
-        $validated = $request->validate([
-            'employment_status' => 'required|in:employed,unemployed,business',
-            'income_range' => 'required|in:25000,35000-50000,51000-99000',
-            'loan_amount' => 'required|numeric|min:500',
-            'pay_day' => 'required|date_format:Y-m-d',
-            'nok.*.name' => 'required|string|max:255',
-            'nok.*.phone' => 'required|string|max:20',
-            'nok.*.relation' => 'required|string|in:brother,sister,spouse,parent',
-        ]);
+    // ✅ Validate request
+    $validated = $request->validate([
+        'employment_status' => 'required|in:employed,unemployed,business',
+        'income_range' => 'required|in:25000,35000-50000,51000-99000',
+        'loan_amount' => 'nullable|numeric|min:500', // allow null → default applied
+        'pay_day' => 'required|date_format:Y-m-d',
+        'nok.*.name' => 'required|string|max:255',
+        'nok.*.phone' => 'required|string|max:20',
+        'nok.*.relation' => 'required|string|in:brother,sister,spouse,parent',
+    ]);
 
-        // Create or update user loan
-        $loan = $user->loan()->updateOrCreate(
-            [],
-            [
-                'employment_status' => $validated['employment_status'],
-                'income_range' => $validated['income_range'],
-                'loan_amount' => $validated['loan_amount'],
-                'pay_day' => $validated['pay_day'],
-                'current_limit' => 500, // default starting limit
-                'repayments_done' => 0
-            ]
-        );
+    // ✅ Map income range to numeric
+    $incomeMap = [
+        '25000' => 25000,
+        '35000-50000' => 40000,
+        '51000-99000' => 70000,
+    ];
 
-        // Update next-of-kin contacts
-        $loan->nextOfKin()->delete(); // Remove old entries if any
+    // ✅ Update user profile
+    $user->update([
+        'employment_status' => $validated['employment_status'],
+        'monthly_income' => $incomeMap[$validated['income_range']] ?? 0,
+    ]);
+
+    // ✅ Determine loan amount safely
+    $loanAmount = $validated['loan_amount'] ?? 500; // default 500 if null
+
+    // ✅ Create or update loan
+    $loan = $user->loans()->updateOrCreate(
+        ['user_id' => $user->id], // match existing loan
+        [
+            'amount' => $loanAmount,
+            'interest_rate' => 10,               // always set
+            'term_days' => 14,
+            'due_date' => now()->addDays(14),
+            'balance_remaining' => $loanAmount,
+            'status' => 'active',
+            'disbursed_at' => now(),
+        ]
+    );
+
+    // ✅ Save Next of Kin safely
+    if (!empty($validated['nok'])) {
+        $loan->nextOfKin()->delete(); // clear old entries
+
         foreach ($validated['nok'] as $nok) {
-            $loan->nextOfKin()->create($nok);
+            $loan->nextOfKin()->create([
+                'name' => $nok['name'],
+                'phone' => $nok['phone'],
+                'relation' => $nok['relation'],
+            ]);
         }
-
-        return redirect()->route('dashboard'); // or next step
     }
+
+    // ✅ Redirect to dashboard
+    return redirect()->route('dashboard');
+}
 }

@@ -36,8 +36,58 @@ class User extends Authenticatable
         ];
     }
 
+    public function loans()
+    {
+        return $this->hasMany(Loan::class);
+    }
+
+    public function activeLoan()
+    {
+        return $this->hasOne(Loan::class)
+                    ->where('status', 'active')
+                    ->latestOfMany();
+    }
+
     public function loan()
-{
-    return $this->hasOne(Loan::class);
-}
+    {
+        // Returns latest loan (active or last paid)
+        return $this->loans()->latest()->first();
+    }
+
+    // Calculate dynamic loan limit
+    public function getLoanLimitAttribute()
+    {
+        $base = 500; // starting limit
+        $level = 0;
+
+        $paidLoans = $this->loans()
+                          ->where('status', 'paid')
+                          ->orderBy('disbursed_at')
+                          ->get();
+
+        $count = 0;
+
+        foreach ($paidLoans as $loan) {
+            if ($loan->principal == $base + ($level * 500)) {
+                $count++;
+            }
+
+            if ($count >= 3) {
+                $level++;
+                $count = 0; // reset for next level
+            }
+        }
+
+        return $base + ($level * 500);
+    }
+
+    // Count repaid loans at current level
+    public function repaidAtCurrentLevel()
+    {
+        $currentLimit = $this->loan_limit;
+        return $this->loans()
+                    ->where('status', 'paid')
+                    ->where('principal', $currentLimit)
+                    ->count();
+    }
 }

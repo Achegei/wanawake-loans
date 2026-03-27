@@ -11,8 +11,9 @@
     @csrf
 
     <div>
-        <label class="text-sm text-gray-600">Email</label>
-        <input type="email" name="email" required
+        <label class="text-sm text-gray-600">Phone Number</label>
+        <input type="text" name="phone" required
+            placeholder="07XXXXXXXX"
             class="w-full mt-1 px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-amber-400 focus:outline-none">
     </div>
 
