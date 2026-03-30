@@ -3,73 +3,91 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Support\Carbon;
 
 class Loan extends Model
 {
-    // ✅ Mass assignable fields
     protected $fillable = [
         'user_id',
-        'loan_amount',         // original loan amount
-        'balance_remaining',   // current unpaid balance
-        'interest_rate',       // e.g., 10
-        'term_days',           // loan duration in days
-        'due_date',            // date loan is due
-        'status',              // active / paid / overdue
-        'disbursed_at',        // timestamp when loan is issued
-        'repayments_done',     // number of repayments completed
-        'current_limit',       // optional: user-specific loan limit
+        'amount',              // requested loan amount
+        'principal',           // principal
+        'interest',            // interest amount
+        'total_due',           // principal + interest
+        'balance_remaining',
+        'interest_rate',
+        'term_days',
+        'due_date',
+        'status',              // pending / active / paid / overdue
+        'disbursed_at',
+        'repayments_done',
+        'transaction_id',
     ];
 
-    // ✅ Cast fields for proper type handling
     protected $casts = [
         'disbursed_at' => 'datetime',
         'due_date' => 'datetime',
         'balance_remaining' => 'decimal:2',
-        'loan_amount' => 'decimal:2',
+        'amount' => 'decimal:2',
+        'principal' => 'decimal:2',
+        'interest' => 'decimal:2',
+        'total_due' => 'decimal:2',
         'interest_rate' => 'decimal:2',
         'repayments_done' => 'integer',
         'term_days' => 'integer',
     ];
 
-    // ✅ Relationships
+    // ----------------------
+    // Relationships
+    // ----------------------
     public function user()
     {
         return $this->belongsTo(User::class);
     }
 
-    public function nextOfKin()
+    // ----------------------
+    // Computed / helper fields
+    // ----------------------
+
+    // Principal = stored principal
+    public function getPrincipalAttribute($value)
     {
-        return $this->hasMany(LoanNextOfKin::class);
+        return $value ?? $this->amount;
     }
 
-    // ✅ Computed property: days left until due
-    public function daysLeft(): int
+    // Interest amount
+    public function getInterestAmountAttribute()
     {
-        if (!$this->due_date) {
-            return 0;
-        }
-
-        $now = Carbon::now();
-        return max(0, $this->due_date->diffInDays($now, false));
+        return round($this->interest ?? ($this->principal * ($this->interest_rate / 100)), 2);
     }
 
-    // ✅ Computed property: is loan overdue?
+    // Total due
+    public function getTotalDueAttribute($value)
+    {
+        return $value ?? round($this->principal + $this->interestAmount, 2);
+    }
+
+    // Days left until due
+    public function getDaysLeftAttribute()
+    {
+        return $this->due_date ? $this->due_date->diffInDays(now(), false) : null;
+    }
+
+    // Is overdue
     public function isOverdue(): bool
     {
-        return $this->due_date && Carbon::now()->greaterThan($this->due_date) && $this->balance_remaining > 0;
+        return $this->due_date && now()->greaterThan($this->due_date) && $this->balance_remaining > 0;
     }
 
-    // ✅ Attribute accessor: format balance nicely
-    protected function formattedBalance(): Attribute
+    // Overdue days
+    public function getOverdueDaysAttribute()
     {
-        return Attribute::make(
-            get: fn () => number_format($this->balance_remaining, 2)
-        );
+        if ($this->isOverdue()) {
+            return round($this->due_date->diffInDays(now(), false));
+        }
+        return 0;
     }
 
-    // ✅ Mark loan as fully paid
+    // Mark loan as paid
     public function markAsPaid()
     {
         $this->update([

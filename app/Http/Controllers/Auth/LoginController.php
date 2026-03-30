@@ -8,57 +8,68 @@ use Illuminate\Support\Facades\Auth;
 
 class LoginController extends Controller
 {
+    // Show login form
     public function show()
     {
         return view('auth.login');
     }
 
+    // Handle login
     public function store(Request $request)
-{
-    $credentials = $request->validate([
-        'phone' => 'required',
-        'password' => 'required',
-    ]);
+    {
+        $credentials = $request->validate([
+            'phone' => 'required',
+            'password' => 'required',
+        ]);
 
-    if (Auth::attempt($credentials)) {
-        $request->session()->regenerate();
+        if (Auth::attempt($credentials)) {
+            $request->session()->regenerate();
 
-        $user = Auth::user();
+            $user = Auth::user();
 
-        // Admin check
-        if ($user->is_admin) {
-            return redirect('/admin/dashboard');
-        }
+            // 1️⃣ Admin check
+            if ($user->is_admin) {
+                return redirect('/admin/dashboard');
+            }
 
-        // 🔥 CORE LOGIC STARTS HERE
+            // 2️⃣ Check onboarding flag
+            if (!$user->is_onboarded) {
+                return redirect()->route('onboarding.show');
+            }
 
-        // 1. No loan at all → go to onboarding
-        if (!$user->loan) {
-            return redirect()->route('onboarding.show');
-        }
+            // 3️⃣ Fetch latest loan
+            $loan = $user->loans()->latest()->first();
 
-        // 2. Has loan but NOT disbursed → still onboarding stage
-        if (!$user->loan->disbursed_at) {
-            return redirect()->route('onboarding.show');
-        }
+            // 4️⃣ No loan → still onboarded but no loan yet
+            if (!$loan) {
+                return redirect()->route('dashboard');
+            }
 
-        // 3. Loan active → go dashboard
-        if ($user->loan->status === 'active') {
+            // 5️⃣ Loan exists but not disbursed yet
+            if (!$loan->disbursed_at) {
+                return redirect()->route('dashboard');
+            }
+
+            // 6️⃣ Loan active → dashboard
+            if ($loan->status === 'active') {
+                return redirect()->route('dashboard');
+            }
+
+            // 7️⃣ Loan paid → dashboard (user can apply again if allowed)
+            if ($loan->status === 'paid') {
+                return redirect()->route('dashboard');
+            }
+
+            // fallback
             return redirect()->route('dashboard');
         }
 
-        // 4. Loan cleared → allow re-application later (optional)
-        if ($user->loan->status === 'paid') {
-            return redirect()->route('dashboard');
-        }
-
-        return redirect()->route('dashboard');
+        return back()->withErrors([
+            'phone' => 'Invalid credentials',
+        ]);
     }
 
-    return back()->withErrors([
-        'phone' => 'Invalid credentials',
-    ]);
-}
+    // Handle logout
     public function logout(Request $request)
     {
         Auth::logout();

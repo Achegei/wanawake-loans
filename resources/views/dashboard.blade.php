@@ -1,102 +1,104 @@
 @extends('layouts.app')
 
 @section('content')
-<div class="max-w-md mx-auto mt-8 p-4 bg-white rounded-xl shadow-md space-y-6">
+<div class="max-w-md mx-auto mt-10 space-y-6">
 
+    {{-- Header --}}
     <div class="text-center">
-        <h1 class="text-2xl font-bold">Welcome, {{ auth()->user()->name }} 👋</h1>
-        <p class="text-gray-500 mt-1">Here’s your loan summary</p>
+        <h1 class="text-2xl font-bold text-gray-800">👋 Welcome, {{ $user->name }}</h1>
+        <p class="text-gray-500">Your financial snapshot</p>
     </div>
 
-    {{-- Current Loan --}}
+    {{-- Loan Card --}}
     @if($loan)
-        @php
-            $principal = $loan->principal;
-            $interest = $loan->interest;
-            $totalDue = $loan->balance_remaining;
-            $due = $loan->due_date ? \Carbon\Carbon::parse($loan->due_date) : null;
-            $now = now();
-            $daysLeft = ($loan->status !== 'paid' && $due) ? $due->diffInDays($now, false) : null;
+        <div class="bg-white p-6 rounded-2xl shadow-xl space-y-4 border">
 
-            $statusColor = $loan->status === 'paid' ? 'text-green-600'
-                         : ($daysLeft !== null && $daysLeft < 0 ? 'text-red-600' : 'text-blue-600');
-        @endphp
-
-        <div class="p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-3">
-            
+            {{-- Status Badge --}}
             <div class="flex justify-between items-center">
-                <span class="font-semibold">Loan Status:</span>
-                <span class="font-bold {{ $statusColor }}">{{ ucfirst($loan->status) }}</span>
+                <span class="text-sm text-gray-500">Loan Status</span>
+                <span class="px-3 py-1 text-sm rounded-full
+                    {{ $loan->status === 'paid' ? 'bg-green-100 text-green-600' : 
+                       ($loan->status === 'pending' ? 'bg-yellow-100 text-yellow-600' :
+                       ($loan->isOverdue ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600')) }}">
+                    {{ ucfirst($loan->status) }}
+                </span>
             </div>
 
-            <div class="flex justify-between">
-                <span>Disbursed:</span>
-                <span>{{ $loan->disbursed_at ? $loan->disbursed_at->format('d M Y') : 'N/A' }}</span>
+            {{-- Total Due --}}
+            <div class="flex justify-center">
+                <div class="w-28 h-28 rounded-full border-4 border-blue-400 flex flex-col items-center justify-center shadow-inner">
+                    <span class="text-sm text-gray-500">Total Due</span>
+                    <span class="text-xl font-bold text-gray-800">
+                        {{ number_format($loan->totalDue, 2) }}
+                    </span>
+                </div>
             </div>
 
-            <div class="flex justify-between">
-                <span>Principal:</span>
-                <span>KES {{ number_format($principal, 2) }}</span>
+            {{-- Breakdown --}}
+            <div class="grid grid-cols-2 gap-4 text-sm text-gray-600">
+                <div>
+                    <p>Principal</p>
+                    <p class="font-bold text-gray-800">{{ number_format($loan->principal, 2) }}</p>
+                </div>
+                <div>
+                    <p>Interest</p>
+                    <p class="font-bold text-green-600">{{ number_format($loan->interestAmount, 2) }}</p>
+                </div>
             </div>
 
-            <div class="flex justify-between">
-                <span>Interest:</span>
-                <span>KES {{ number_format($interest, 2) }}</span>
+            {{-- Balance Remaining --}}
+            <div class="text-center">
+                <p class="text-sm text-gray-500">Balance Remaining</p>
+                <p class="font-bold text-gray-800">{{ number_format($loan->balance_remaining, 2) }}</p>
             </div>
 
-            <div class="flex justify-between font-bold text-lg">
-                <span>Total {{ $loan->status === 'paid' ? 'Paid' : 'Due' }}:</span>
-                <span>KES {{ number_format($totalDue, 2) }}</span>
-            </div>
-
-            <div class="flex justify-between items-center">
-                <span>Due Date:</span>
-                <span>{{ $due ? $due->format('d M Y') : 'N/A' }}</span>
-            </div>
-
-            @if($daysLeft !== null)
-                <div class="mt-2 text-center font-semibold {{ $daysLeft < 0 ? 'text-red-600' : 'text-green-600' }}">
-                    @if($daysLeft >= 0)
-                        {{ $daysLeft }} {{ Str::plural('day', $daysLeft) }} left
-                    @else
-                        Overdue by {{ abs($daysLeft) }} {{ Str::plural('day', abs($daysLeft)) }}
-                    @endif
+            {{-- Due Info --}}
+            @if($loan->status !== 'pending')
+                <div class="text-center">
+                    <p class="text-gray-500 text-sm">Due Date</p>
+                    <p class="font-semibold">{{ $loan->due_date->format('d M Y') }}</p>
+                    <p class="mt-1 font-bold {{ $loan->isOverdue ? 'text-red-600' : 'text-green-600' }}">
+                        @if(!$loan->isOverdue)
+                            {{ $loan->daysLeft }} day(s) left
+                        @else
+                            Overdue by {{ abs($loan->daysLeft) }} day(s)
+                        @endif
+                    </p>
+                </div>
+            @else
+                <div class="text-center mt-2 text-gray-500 text-sm">
+                    Your loan of KES {{ number_format($loan->totalDue, 2) }} is being processed ⏱
                 </div>
             @endif
 
-            <div class="mt-4 text-center">
-                @if($loan->status !== 'paid')
+            {{-- Actions --}}
+            <div class="text-center pt-2">
+                @if($loan->status === 'active')
                     <form action="{{ route('loan.pay') }}" method="POST">
                         @csrf
-                        <button type="submit"
-                            class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-lg shadow-md transition">
-                            Pay with M-Pesa
+                        <button class="w-full bg-green-500 hover:bg-green-600 text-white py-3 rounded-xl font-bold shadow-md">
+                            💳 Pay with M-Pesa
                         </button>
                     </form>
-                @elseif($canApply)
-                    <a href="{{ route('loan.apply') }}"
-                        class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-lg shadow-md transition">
-                        Apply for New Loan
+                @elseif($loan->status === 'paid' && $canApply)
+                    <a href="{{ route('loan.apply') }}" class="block w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl font-bold shadow-md">
+                        🚀 Take Another Loan
                     </a>
                 @endif
             </div>
+
         </div>
     @else
-        <div class="p-4 bg-yellow-50 text-yellow-800 rounded-lg border border-yellow-200 text-center">
-            <p>No active loan yet. Complete onboarding to get started.</p>
+        {{-- No loan --}}
+        <div class="bg-white p-6 rounded-2xl shadow-xl text-center space-y-4">
+            <p class="text-gray-600">No active loan</p>
+            @if($canApply)
+                <a href="{{ route('loan.apply') }}" class="block w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl font-bold shadow-md">
+                    🚀 Apply for Loan
+                </a>
+            @endif
         </div>
     @endif
-
-    {{-- Loan Limit Progress --}}
-    <div class="mt-4">
-        <p>Your current loan limit: <strong>KES {{ number_format($currentLimit) }}</strong></p>
-        <div class="bg-gray-200 rounded-full h-2 w-full mt-1">
-            <div class="bg-green-500 h-2 rounded-full" style="width: {{ $progress }}%"></div>
-        </div>
-        <p class="text-gray-500 text-sm mt-1">
-            Repay {{ 3 - $repaid }} more loan(s) at this level to unlock the next limit.
-        </p>
-    </div>
 
 </div>
 @endsection

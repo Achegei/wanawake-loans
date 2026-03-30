@@ -4,68 +4,107 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use App\Models\Loan;
+use App\Jobs\DisburseLoanJob;
 
 class LoanController extends Controller
 {
-    // Show loan application form
+    /**
+     * Show loan application form
+     */
     public function create()
     {
-        $user = Auth::user();
-        $currentLimit = $user->loan_limit;
-        $repaid = $user->repaidAtCurrentLevel();
-        $progress = min(100, ($repaid / 3) * 100);
-
-        return view('loan.create', compact('currentLimit', 'repaid', 'progress'));
+        $allowedAmounts = [100, 200]; // Extendable
+        return view('loan.create', compact('allowedAmounts'));
     }
 
-    // Store new loan
+    /**
+     * Store a new loan and queue disbursement
+     */
     public function store(Request $request)
     {
         $user = Auth::user();
-        $max = $user->loan_limit;
 
+        // Validate input
         $request->validate([
-            'amount' => 'required|numeric|min:500|max:' . $max,
+            'amount' => 'required|in:100,200',
         ]);
 
-        // Prevent multiple active loans
-        $activeLoan = $user->loans()->where('status', 'active')->first();
-        if ($activeLoan) {
-            return redirect()->route('dashboard')->with('error', 'You already have an active loan.');
+        // Prevent any ongoing loans
+        $hasExistingLoan = $user->loans()
+            ->whereIn('status', ['pending', 'active'])
+            ->exists();
+
+        if ($hasExistingLoan) {
+            return redirect()->route('dashboard')
+                ->with('error', 'You already have an ongoing loan.');
         }
 
+        // Business logic: interest & term
         $principal = $request->amount;
-        $interest = $principal * 0.10; // 10% interest
+        $interest = $principal == 100 ? 30 : 50; // Fixed interest
+        $termDays = 1;
         $totalDue = $principal + $interest;
 
-        $loan = new Loan();
-        $loan->user_id = $user->id;
-        $loan->principal = $principal;
-        $loan->interest = $interest;
-        $loan->total_due = $totalDue;
-        $loan->balance_remaining = $totalDue;
-        $loan->status = 'active';
-        $loan->disbursed_at = now();
-        $loan->due_date = now()->addWeeks(2); // 2 weeks
-        $loan->save();
+        DB::beginTransaction();
 
-        return redirect()->route('dashboard')->with('success', 'Loan successfully applied!');
+        try {
+            // Create loan record
+            $loan = $user->loans()->create([
+    'amount' => $principal,           // this exists in your table
+    'principal' => $principal,        // use existing column
+    'interest' => $interest,          // use existing column
+    'total_due' => $totalDue,         // use existing column
+    'term_days' => $termDays,
+    'due_date' => now()->addDays($termDays),
+    'status' => 'pending',
+    'disbursed_at' => null,
+    'balance_remaining' => $totalDue,
+    'transaction_id' => null,
+]);
+
+            DB::commit();
+
+            // Dispatch disbursement job
+            DisburseLoanJob::dispatch($loan);
+
+            return redirect()->route('dashboard')
+                ->with('success', '💰 Loan request queued. Disbursement will be processed shortly!');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            \Log::error('Loan creation failed', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage()
+            ]);
+
+            return back()->with('error', 'Something went wrong. Try again.');
+        }
     }
 
-    // Pay loan
+    /**
+     * Pay the active loan
+     */
     public function pay(Request $request)
     {
-        $loan = Auth::user()->loans()->where('status', 'active')->first();
+        $loan = Auth::user()->loans()
+            ->whereIn('status', ['active', 'pending'])
+            ->latest()
+            ->first();
 
         if (!$loan) {
-            return redirect()->route('dashboard')->with('error', 'No active loan to pay.');
+            return redirect()->route('dashboard')
+                ->with('error', 'No active loan to pay.');
         }
 
-        $loan->balance_remaining = 0;
-        $loan->status = 'paid';
-        $loan->save();
+        $loan->update([
+            'status' => 'paid',
+            'balance_remaining' => 0,
+        ]);
 
-        return redirect()->route('dashboard')->with('success', 'Loan successfully paid!');
+        return redirect()->route('dashboard')
+            ->with('success', '✅ Loan successfully paid!');
     }
 }

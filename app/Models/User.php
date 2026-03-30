@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use App\Models\NextOfKin;
 
 #[Fillable([
     'name',
@@ -40,6 +41,10 @@ class User extends Authenticatable
     {
         return $this->hasMany(Loan::class);
     }
+    public function nextOfKin()
+    {
+        return $this->hasMany(NextOfKin::class);
+    }
 
     public function activeLoan()
     {
@@ -50,8 +55,8 @@ class User extends Authenticatable
 
     public function loan()
     {
-        // Returns latest loan (active or last paid)
-        return $this->loans()->latest()->first();
+        // Returns the latest loan as a relationship instance
+        return $this->hasOne(Loan::class)->latestOfMany();
     }
 
     // Calculate dynamic loan limit
