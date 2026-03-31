@@ -51,7 +51,7 @@
     <!-- Footer -->
     <footer class="bg-white border-t py-4 mt-auto">
         <div class="max-w-6xl mx-auto px-6 text-center text-gray-500 text-sm">
-            &copy; {{ date('Y') }} Wanawake Loans. All rights reserved.
+            &copy; {{ date('Y') }} Boda Quick Loans. All rights reserved.
         </div>
     </footer>
 
