@@ -9,15 +9,17 @@ class Loan extends Model
 {
     protected $fillable = [
         'user_id',
-        'amount',              // requested loan amount
-        'principal',           // principal
-        'interest',            // interest amount
-        'total_due',           // principal + interest
+        'agent_id',           // ✅ ADD (agent tracking)
+        'access_code_id',     // ✅ ADD (code used)
+        'amount',
+        'principal',
+        'interest',
+        'total_due',
         'balance_remaining',
         'interest_rate',
         'term_days',
         'due_date',
-        'status',              // pending / active / paid / overdue
+        'status',             // pending / active / paid / overdue
         'disbursed_at',
         'repayments_done',
         'transaction_id',
@@ -36,19 +38,37 @@ class Loan extends Model
         'term_days' => 'integer',
     ];
 
-    // ----------------------
-    // Relationships
-    // ----------------------
+    /*
+    |--------------------------------------------------------------------------
+    | RELATIONSHIPS
+    |--------------------------------------------------------------------------
+    */
+
+    // Borrower
     public function user()
     {
         return $this->belongsTo(User::class);
     }
 
-    // ----------------------
-    // Computed / helper fields
-    // ----------------------
+    // Agent who created/handled this loan
+    public function agent()
+    {
+        return $this->belongsTo(User::class, 'agent_id');
+    }
 
-    // Principal = stored principal
+    // Access code used
+    public function accessCode()
+    {
+        return $this->belongsTo(AgentAccessCode::class, 'access_code_id');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | COMPUTED FIELDS
+    |--------------------------------------------------------------------------
+    */
+
+    // Principal fallback
     public function getPrincipalAttribute($value)
     {
         return $value ?? $this->amount;
@@ -57,37 +77,61 @@ class Loan extends Model
     // Interest amount
     public function getInterestAmountAttribute()
     {
-        return round($this->interest ?? ($this->principal * ($this->interest_rate / 100)), 2);
+        return round(
+            $this->interest ?? ($this->principal * ($this->interest_rate / 100)),
+            2
+        );
     }
 
     // Total due
     public function getTotalDueAttribute($value)
     {
-        return $value ?? round($this->principal + $this->interestAmount, 2);
+        return $value ?? round($this->principal + $this->interest_amount, 2);
     }
 
-    // Days left until due
+    // Hours left (VERY IMPORTANT FIX)
+    public function getHoursLeftAttribute()
+    {
+        if (!$this->disbursed_at || $this->status === 'paid') {
+            return null;
+        }
+
+        return now()->diffInHours($this->due_date, false);
+    }
+
+    // Days left
     public function getDaysLeftAttribute()
     {
-        return $this->due_date ? $this->due_date->diffInDays(now(), false) : null;
+        if (!$this->disbursed_at || $this->status === 'paid') {
+            return null;
+        }
+
+        return now()->diffInDays($this->due_date, false);
     }
 
     // Is overdue
     public function isOverdue(): bool
     {
-        return $this->due_date && now()->greaterThan($this->due_date) && $this->balance_remaining > 0;
+        return $this->balance_remaining > 0 && $this->hours_left < 0;
     }
 
     // Overdue days
     public function getOverdueDaysAttribute()
     {
         if ($this->isOverdue()) {
-            return round($this->due_date->diffInDays(now(), false));
+            return abs(now()->diffInDays($this->due_date));
         }
+
         return 0;
     }
 
-    // Mark loan as paid
+    /*
+    |--------------------------------------------------------------------------
+    | ACTIONS
+    |--------------------------------------------------------------------------
+    */
+
+    // Mark as paid
     public function markAsPaid()
     {
         $this->update([

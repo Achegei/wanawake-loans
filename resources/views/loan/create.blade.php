@@ -17,8 +17,7 @@
 
         {{-- Option 100 --}}
         <label class="cursor-pointer block">
-            <input type="radio" name="amount" value="100" class="hidden peer">
-
+            <input type="radio" name="amount" value="100" class="hidden peer" {{ old('amount') == 100 ? 'checked' : '' }}>
             <div class="loan-card p-4 rounded-xl border-2 border-gray-200 transition text-center">
                 <p class="text-lg font-bold">KES 100</p>
                 <p class="text-sm text-gray-500">Repay</p>
@@ -34,7 +33,7 @@
 
         {{-- Option 200 --}}
         <label class="cursor-pointer block">
-            <input type="radio" name="amount" value="200" class="hidden peer">
+            <input type="radio" name="amount" value="200" class="hidden peer" {{ old('amount') == 200 ? 'checked' : '' }}>
 
             <div class="loan-card p-4 rounded-xl border-2 border-gray-200 transition text-center">
                 <p class="text-lg font-bold">KES 200</p>
@@ -62,6 +61,22 @@
         ⚡ Instant disbursement to M-Pesa
     </div>
 
+    {{-- Agent Code --}}
+    <div class="space-y-2">
+        <input 
+                type="text" 
+                name="agent_code"
+                value="{{ old('agent_code') }}"
+                placeholder="Enter Agent Code"
+                oninput="this.value = this.value.toUpperCase()"
+                class="w-full border p-3 rounded-xl text-center font-semibold tracking-widest"
+                required
+            >
+
+        @error('agent_code')
+            <p class="text-red-500 text-sm text-center">{{ $message }}</p>
+        @enderror
+    </div>
     {{-- Submit --}}
     <button id="submitBtn" type="submit"
         class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 rounded-xl shadow-md transition">
@@ -91,23 +106,29 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // Form submit handler
-    form.addEventListener('submit', function(e) {
-        const selected = document.querySelector('input[name="amount"]:checked');
+    // Restore selected card on reload
+    const selected = document.querySelector('input[name="amount"]:checked');
+    if (selected) {
+        const index = Array.from(radios).indexOf(selected);
 
-        if (!selected) {
-            e.preventDefault();
-            error.classList.remove('hidden');
-            return;
-        }
+        cards[index].classList.add('border-blue-500', 'bg-blue-50');
+    }
+    const codeInput = document.querySelector('input[name="agent_code"]');
 
-        // Disable button + loading state
-        btn.disabled = true;
-        btn.innerText = 'Processing...';
+form.addEventListener('submit', function(e) {
+    const selected = document.querySelector('input[name="amount"]:checked');
 
-        // Allow normal form submission (IMPORTANT)
-    });
+    if (!selected) {
+        e.preventDefault();
+        error.classList.remove('hidden');
+        return;
+    }
 
+    // 🔥 trim spaces before submit
+    codeInput.value = codeInput.value.trim().toUpperCase();
+
+    btn.disabled = true;
+    btn.innerText = 'Processing...';
 });
 </script>
 @endsection

@@ -4,58 +4,46 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use App\Models\NextOfKin;
+use App\Models\SalesAgent;
 
 class OnboardingController extends Controller
 {
-        public function show()
+    public function show()
     {
         $user = Auth::user();
 
-        // ✅ Skip if already onboarded
+        // Skip if already onboarded
         if ($user->is_onboarded) {
             return redirect()->route('dashboard');
         }
 
-        // ✅ Load user's next of kin directly
-        $nextOfKin = $user->nextOfKin ?? [];
-
-        return view('onboarding', compact('user', 'nextOfKin'));
+        return view('onboarding', compact('user'));
     }
 
-   public function store(Request $request)
-{
-    $user = Auth::user();
+    public function store(Request $request)
+    {
+        $user = Auth::user();
 
-    $validated = $request->validate([
-        'employment_status' => 'required|in:employed,unemployed,business',
-        'income_range' => 'required|in:25000,35000-50000,51000-99000',
-        'pay_day' => 'required|date_format:Y-m-d',
-        'nok.*.name' => 'required|string|max:255',
-        'nok.*.phone' => 'required|string|max:20',
-        'nok.*.relation' => 'required|string|in:brother,sister,spouse,parent',
-    ]);
+        // ✅ ONLY agent code now
+        $validated = $request->validate([
+            'agent_code' => 'required|string',
+        ]);
 
-    $incomeMap = [
-        '25000' => 25000,
-        '35000-50000' => 40000,
-        '51000-99000' => 70000,
-    ];
+        // ✅ Find agent
+        $agent = SalesAgent::where('code', strtoupper($validated['agent_code']))->first();
 
-    // ✅ Update user
-    $user->update([
-        'employment_status' => $validated['employment_status'],
-        'monthly_income' => $incomeMap[$validated['income_range']] ?? 0,
-        'is_onboarded' => true,
-    ]);
+        if (!$agent) {
+            return back()
+                ->withErrors(['agent_code' => 'Invalid sales agent code'])
+                ->withInput();
+        }
 
-    // ✅ Save Next of Kin (USER LEVEL)
-    $user->nextOfKin()->delete();
+        // ✅ Update user
+        $user->update([
+            'is_onboarded' => true,
+            'sales_agent_id' => $agent->id,
+        ]);
 
-    foreach ($validated['nok'] as $nok) {
-        $user->nextOfKin()->create($nok);
+        return redirect()->route('dashboard')->with('success', 'Welcome! You can now request a loan.');
     }
-
-    return redirect()->route('dashboard');
-}
 }

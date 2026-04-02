@@ -53,21 +53,20 @@
             </div>
 
             {{-- Due Info --}}
-            @if($loan->status !== 'pending')
+            @if(in_array($loan->status, ['pending', 'active']))
                 <div class="text-center">
                     <p class="text-gray-500 text-sm">Due Date</p>
-                    <p class="font-semibold">{{ $loan->due_date->format('d M Y') }}</p>
-                    <p class="mt-1 font-bold {{ $loan->isOverdue ? 'text-red-600' : 'text-green-600' }}">
-                        @if(!$loan->isOverdue)
-                            {{ $loan->daysLeft }} day(s) left
-                        @else
-                            Overdue by {{ abs($loan->daysLeft) }} day(s)
-                        @endif
-                    </p>
-                </div>
-            @else
-                <div class="text-center mt-2 text-gray-500 text-sm">
-                    Your loan of KES {{ number_format($loan->totalDue, 2) }} is being processed ⏱
+                    <p class="font-semibold">{{ $loan->due_date->format('d M Y, h:i A') }}</p>
+
+                    @if($loan->hoursLeft !== null)
+                        <p class="mt-1 font-bold {{ $loan->isOverdue ? 'text-red-600' : 'text-green-600' }}">
+                            @if(!$loan->isOverdue)
+                                {{ $loan->hoursLeft }} hour(s) left
+                            @else
+                                Overdue by {{ abs($loan->hoursLeft) }} hour(s)
+                            @endif
+                        </p>
+                    @endif
                 </div>
             @endif
 

@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use App\Models\Loan;
 use App\Jobs\DisburseLoanJob;
+use App\Models\AgentAccessCode;
 
 class LoanController extends Controller
 {
@@ -29,6 +30,7 @@ class LoanController extends Controller
         // Validate input
         $request->validate([
             'amount' => 'required|in:100,200',
+            'agent_code' => 'required|string', // Agent code required
         ]);
 
         // Prevent any ongoing loans
@@ -41,32 +43,52 @@ class LoanController extends Controller
                 ->with('error', 'You already have an ongoing loan.');
         }
 
-        // Business logic: interest & term
+        // Check if agent code exists and is unused
+        $code = AgentAccessCode::where('code', strtoupper($request->agent_code))
+                ->where('used', false)
+                ->first();
+
+        if (!$code) {
+            return back()->withErrors([
+                'agent_code' => 'Invalid or already used code'
+            ])->withInput();
+        }
+
+        // Loan calculations
         $principal = $request->amount;
-        $interest = $principal == 100 ? 30 : 50; // Fixed interest
-        $termDays = 1;
+        $interest = $principal == 100 ? 30 : 50;
         $totalDue = $principal + $interest;
+
+        $disbursedAt = now();
+        $dueDate = $disbursedAt->copy()->setHour(22)->setMinute(0)->setSecond(0);
+        if ($disbursedAt->greaterThan($dueDate)) {
+            $dueDate->addDay();
+        }
 
         DB::beginTransaction();
 
         try {
             // Create loan record
             $loan = $user->loans()->create([
-    'amount' => $principal,           // this exists in your table
-    'principal' => $principal,        // use existing column
-    'interest' => $interest,          // use existing column
-    'total_due' => $totalDue,         // use existing column
-    'term_days' => $termDays,
-    'due_date' => now()->addDays($termDays),
-    'status' => 'pending',
-    'disbursed_at' => null,
-    'balance_remaining' => $totalDue,
-    'transaction_id' => null,
-]);
+                'amount' => $principal,
+                'principal' => $principal,
+                'interest' => $interest,
+                'total_due' => $totalDue,
+                'term_days' => 1,
+                'disbursed_at' => $disbursedAt,
+                'due_date' => $dueDate,
+                'status' => 'pending',
+                'balance_remaining' => $totalDue,
+                'transaction_id' => null,
+                'agent_id' => $code->sales_agent_id, // link loan to agent
+                'access_code_id' => $code->id,
+            ]);
+
+            // Mark code as used
+            $code->update(['used' => true]);
 
             DB::commit();
 
-            // Dispatch disbursement job
             DisburseLoanJob::dispatch($loan);
 
             return redirect()->route('dashboard')
