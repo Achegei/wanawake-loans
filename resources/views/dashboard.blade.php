@@ -52,28 +52,36 @@
                 <p class="font-bold text-gray-800">{{ number_format($loan->balance_remaining, 2) }}</p>
             </div>
 
+            
             {{-- Due Info --}}
-            @if(in_array($loan->status, ['pending', 'active']))
-                <div class="text-center">
-                    <p class="text-gray-500 text-sm">Due Date</p>
-                    <p class="font-semibold">{{ $loan->due_date->format('d M Y, h:i A') }}</p>
+@if(in_array($loan->status, ['pending', 'active']))
+    <div class="text-center">
+        <p class="text-gray-500 text-sm">Due Date</p>
+        <p class="font-semibold">{{ $loan->due_date->format('d M Y, h:i A') }}</p>
 
-                    @php
-                        $now = now();
-                        $minutesLeft = $loan->due_date->diffInMinutes($now, false);
-                        $hoursLeft = ceil($minutesLeft / 60); // round up partial hours
-                        $isOverdue = $hoursLeft < 0;
-                    @endphp
+        @php
+            $now = now()->setTimezone(config('app.timezone'));
+            $due = $loan->due_date->copy()->setTimezone(config('app.timezone'));
 
-                    <p class="mt-1 font-bold {{ $isOverdue ? 'text-red-600' : 'text-green-600' }}">
-                        @if(!$isOverdue)
-                            {{ $hoursLeft }} hour(s) left
-                        @else
-                            Overdue by {{ abs($hoursLeft) }} hour(s)
-                        @endif
-                    </p>
-                </div>
+            // Difference in minutes
+            $diffMinutes = $now->diffInMinutes($due, false); // negative if overdue
+
+            $isOverdue = $diffMinutes < 0;
+
+            // Calculate hours and minutes
+            $hours = floor(abs($diffMinutes) / 60);
+            $minutes = abs($diffMinutes) % 60;
+        @endphp
+
+        <p class="mt-1 font-bold {{ $isOverdue ? 'text-red-600' : 'text-green-600' }}">
+            @if(!$isOverdue)
+                {{ $hours }} hour(s) {{ $minutes }} min(s) left
+            @else
+                Overdue by {{ $hours }} hour(s) {{ $minutes }} min(s)
             @endif
+        </p>
+    </div>
+@endif
 
             {{-- Actions --}}
             <div class="text-center pt-2">

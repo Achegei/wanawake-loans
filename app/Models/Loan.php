@@ -91,13 +91,21 @@ class Loan extends Model
 
     // Hours left (VERY IMPORTANT FIX)
     public function getHoursLeftAttribute()
-    {
-        if (!$this->disbursed_at || $this->status === 'paid') {
-            return null;
-        }
-
-        return now()->diffInHours($this->due_date, false);
+{
+    if (!$this->disbursed_at || $this->status === 'paid') {
+        return null;
     }
+
+    // Use timezone from app
+    $now = now()->setTimezone(config('app.timezone'));
+    $due = $this->due_date->copy()->setTimezone(config('app.timezone'));
+
+    // Signed difference
+    $hours = $due->diffInHours($now, false);
+
+    // Return 0 if negative (overdue will be handled separately)
+    return $hours >= 0 ? $hours : 0;
+}
 
     // Days left
     public function getDaysLeftAttribute()
@@ -112,9 +120,13 @@ class Loan extends Model
     // Is overdue
     public function isOverdue(): bool
     {
-        return $this->balance_remaining > 0 && $this->hours_left < 0;
-    }
+        if ($this->status === 'paid') {
+            return false;
+        }
 
+        $now = now()->setTimezone(config('app.timezone'));
+        return $now->greaterThan($this->due_date);
+    }
     // Overdue days
     public function getOverdueDaysAttribute()
     {

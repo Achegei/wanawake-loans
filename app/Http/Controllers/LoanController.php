@@ -54,9 +54,8 @@ class LoanController extends Controller
         $interest = $principal == 100 ? 30 : 50;
         $totalDue = $principal + $interest;
 
-        $disbursedAt = now();
-        // Set due date as end of the disbursement day (11:59 PM)
-        $dueDate = $disbursedAt->copy()->setTimezone(config('app.timezone'))->setHour(23)->setMinute(59)->setSecond(0);
+        $disbursedAt = now()->setTimezone(config('app.timezone')); // ensures proper timezone
+        $dueDate = $disbursedAt->copy()->setHour(23)->setMinute(59)->setSecond(0);
         $hoursLeft = now()->diffInHours($dueDate, false); // negative if overdue
 
         DB::beginTransaction();

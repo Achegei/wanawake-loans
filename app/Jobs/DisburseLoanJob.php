@@ -30,6 +30,13 @@ class DisburseLoanJob implements ShouldQueue
 
         $loan = Loan::find($this->loan->id);
         if (!$loan || $loan->status !== 'pending') return;
+        $client = new \GuzzleHttp\Client([
+            'base_uri' => 'https://sandbox.intasend.com/api/v1/',
+            'headers' => [
+                'Authorization' => 'Bearer ' . config('services.intasend.api_key'),
+                'Accept' => 'application/json',
+            ],
+        ]);
 
         DB::beginTransaction();
 
