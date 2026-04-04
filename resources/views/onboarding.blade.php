@@ -22,28 +22,13 @@
         </div>
     @endif
 
-    <form action="{{ route('onboarding.store') }}" method="POST" class="space-y-4">
-        @csrf
+    <form method="POST" action="{{ route('onboarding.store') }}">
+    @csrf
 
-        <!-- Agent Code -->
-        <div>
-            <input 
-                type="text" 
-                name="agent_code"
-                value="{{ old('agent_code') }}"
-                placeholder="Enter Agent Code (e.g. A9A531)"
-                oninput="this.value = this.value.toUpperCase()"
-                class="w-full border p-3 rounded-lg text-center tracking-widest font-semibold"
-                required
-            >
-        </div>
-
-        <!-- Submit -->
-        <button type="submit"
-            class="w-full bg-amber-500 text-white py-3 rounded-lg font-semibold hover:bg-amber-600 transition">
-            Continue
-        </button>
-    </form>
+    <button class="w-full bg-blue-500 text-white py-3 rounded-xl">
+        Continue
+    </button>
+</form>
 
 </div>
 @endsection

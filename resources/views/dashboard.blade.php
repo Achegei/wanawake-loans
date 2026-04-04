@@ -58,15 +58,20 @@
                     <p class="text-gray-500 text-sm">Due Date</p>
                     <p class="font-semibold">{{ $loan->due_date->format('d M Y, h:i A') }}</p>
 
-                    @if($loan->hoursLeft !== null)
-                        <p class="mt-1 font-bold {{ $loan->isOverdue ? 'text-red-600' : 'text-green-600' }}">
-                            @if(!$loan->isOverdue)
-                                {{ $loan->hoursLeft }} hour(s) left
-                            @else
-                                Overdue by {{ abs($loan->hoursLeft) }} hour(s)
-                            @endif
-                        </p>
-                    @endif
+                    @php
+                        $now = now();
+                        $minutesLeft = $loan->due_date->diffInMinutes($now, false);
+                        $hoursLeft = ceil($minutesLeft / 60); // round up partial hours
+                        $isOverdue = $hoursLeft < 0;
+                    @endphp
+
+                    <p class="mt-1 font-bold {{ $isOverdue ? 'text-red-600' : 'text-green-600' }}">
+                        @if(!$isOverdue)
+                            {{ $hoursLeft }} hour(s) left
+                        @else
+                            Overdue by {{ abs($hoursLeft) }} hour(s)
+                        @endif
+                    </p>
                 </div>
             @endif
 

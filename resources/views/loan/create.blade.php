@@ -87,48 +87,55 @@
 </div>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-
-    const cards = document.querySelectorAll('.loan-card');
+    const cards = document.querySelectorAll('label .loan-card'); // ensure we target the div inside label
     const radios = document.querySelectorAll('input[name="amount"]');
     const form = document.getElementById('loanForm');
     const error = document.getElementById('selectionError');
     const btn = document.getElementById('submitBtn');
+    const codeInput = document.querySelector('input[name="agent_code"]');
 
-    // Handle selection UI
+    // Handle card highlight when selecting a radio
     radios.forEach((radio, index) => {
         radio.addEventListener('change', () => {
+            // Remove highlight from all cards
             cards.forEach(c => {
                 c.classList.remove('border-blue-500', 'bg-blue-50');
             });
 
+            // Highlight selected card
             cards[index].classList.add('border-blue-500', 'bg-blue-50');
+
+            // Hide error if previously shown
             error.classList.add('hidden');
         });
     });
 
-    // Restore selected card on reload
+    // Highlight the card for previously selected radio (old value / page reload)
     const selected = document.querySelector('input[name="amount"]:checked');
     if (selected) {
         const index = Array.from(radios).indexOf(selected);
-
-        cards[index].classList.add('border-blue-500', 'bg-blue-50');
-    }
-    const codeInput = document.querySelector('input[name="agent_code"]');
-
-form.addEventListener('submit', function(e) {
-    const selected = document.querySelector('input[name="amount"]:checked');
-
-    if (!selected) {
-        e.preventDefault();
-        error.classList.remove('hidden');
-        return;
+        if (index >= 0) {
+            cards[index].classList.add('border-blue-500', 'bg-blue-50');
+        }
     }
 
-    // 🔥 trim spaces before submit
-    codeInput.value = codeInput.value.trim().toUpperCase();
+    // Form submit validation
+    form.addEventListener('submit', function(e) {
+        const selected = document.querySelector('input[name="amount"]:checked');
 
-    btn.disabled = true;
-    btn.innerText = 'Processing...';
+        if (!selected) {
+            e.preventDefault();
+            error.classList.remove('hidden');
+            return;
+        }
+
+        // Trim spaces and uppercase agent code before submit
+        codeInput.value = codeInput.value.trim().toUpperCase();
+
+        // Disable submit button and show processing state
+        btn.disabled = true;
+        btn.innerText = 'Processing...';
+    });
 });
 </script>
 @endsection
