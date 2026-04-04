@@ -142,3 +142,28 @@ Route::prefix('agent')->name('agent.')->group(function () {
         Route::post('/logout', [AgentLoginController::class, 'logout'])->name('logout');
     });
 });
+
+// IntaSend Webhook Endpoint
+Route::post('/webhooks/intasend', function (\Illuminate\Http\Request $request) {
+
+    \Log::info('IntaSend Webhook:', $request->all());
+
+    $invoiceId = $request->invoice_id ?? null;
+    $state = $request->state ?? null;
+
+    if ($invoiceId && $state === 'COMPLETE') {
+
+        $loan = \App\Models\Loan::where('transaction_id', $invoiceId)->first();
+
+        if ($loan) {
+            $loan->update([
+                'status' => 'paid',
+                'balance_remaining' => 0
+            ]);
+
+            \Log::info('Loan marked as PAID', ['loan_id' => $loan->id]);
+        }
+    }
+
+    return response()->json(['status' => 'ok']);
+});

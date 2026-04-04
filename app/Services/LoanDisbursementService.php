@@ -4,6 +4,7 @@ namespace App\Services;
 
 use IntaSend\IntaSendPHP\Transfer;
 use App\Models\Loan;
+use Illuminate\Support\Facades\Log;
 
 class LoanDisbursementService
 {
@@ -11,10 +12,9 @@ class LoanDisbursementService
 
     public function __construct()
     {
-        // Initialize the IntaSend Transfer client with API credentials
         $credentials = [
-            'token' => env('INTASEND_API_TOKEN'),          // Your secret token
-            'publishable_key' => env('INTASEND_PUBLISHABLE_KEY'), // Your public key
+            'secret_key' => config('services.intasend.intasend_secret_key'),
+            'publishable_key' => config('services.intasend.publishable_key'),
         ];
 
         $this->client = new Transfer();
@@ -22,45 +22,73 @@ class LoanDisbursementService
     }
 
     /**
-     * Disburse loan to user's mobile number via IntaSend M-Pesa B2C
+     * Disburse loan via M-Pesa
+     * Returns: ['success' => bool, 'tracking_id' => ?string, 'error' => ?string]
      */
-    public function disburseToMobile(Loan $loan): bool
+    public function disburseToMobile(Loan $loan): array
     {
-        $amount = $loan->principal;
-        $phone = preg_replace('/^0/', '254', $loan->user->phone);
-
-        // Prepare transaction array
-        $transactions = [
-            [
-                'account' => $phone,
-                'amount' => (string) $amount,
-            ]
-        ];
-
         try {
-    $response = $this->client->mpesa("KES", $transactions);
+            $phone = $this->formatPhone($loan->user->phone);
 
-    \Log::info('IntaSend raw response', [
-        'loan_id' => $loan->id,
-        'response' => $response
-    ]);
+            $transactions = [[
+                'account' => $phone,
+                'amount' => (string) $loan->principal,
+            ]];
 
-    if (isset($response->requires_approval) && $response->requires_approval === "YES") {
-        $response = $this->client->approve($response);
+            $response = $this->client->mpesa("KES", $transactions);
+
+            Log::info('IntaSend response', [
+                'loan_id' => $loan->id,
+                'response' => $response
+            ]);
+
+            // Auto-approve if needed
+            if (!empty($response->requires_approval) && $response->requires_approval === "YES") {
+                $response = $this->client->approve($response);
+            }
+
+            // SUCCESS CASE
+            if (!empty($response->tracking_id)) {
+                return [
+                    'success' => true,
+                    'tracking_id' => $response->tracking_id,
+                    'error' => null
+                ];
+            }
+
+            return [
+                'success' => false,
+                'tracking_id' => null,
+                'error' => 'No tracking ID returned'
+            ];
+
+        } catch (\Throwable $e) {
+            Log::error('Disbursement failed', [
+                'loan_id' => $loan->id,
+                'error' => $e->getMessage()
+            ]);
+
+            return [
+                'success' => false,
+                'tracking_id' => null,
+                'error' => $e->getMessage()
+            ];
+        }
     }
 
-    if (!empty($response->tracking_id)) {
-        return true;
-    }
+    private function formatPhone(string $phone): string
+    {
+        // Ensure 2547XXXXXXXX format
+        $phone = preg_replace('/\D/', '', $phone);
 
-} catch (\Throwable $e) {
-    \Log::error('Loan Disbursement Error: ' . $e->getMessage(), [
-        'loan_id' => $loan->id,
-        'user_id' => $loan->user_id,
-    ]);
-
+        if (str_starts_with($phone, '0')) {
+            return '254' . substr($phone, 1);
         }
 
-        return false;
+        if (str_starts_with($phone, '7')) {
+            return '254' . $phone;
+        }
+
+        return $phone;
     }
 }

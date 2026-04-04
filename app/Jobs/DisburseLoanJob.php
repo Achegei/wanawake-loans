@@ -17,6 +17,9 @@ class DisburseLoanJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    public $tries = 3;        // retry 3 times
+    public $backoff = 60;     // wait 60 seconds
+
     public Loan $loan;
 
     public function __construct(Loan $loan)
@@ -25,52 +28,46 @@ class DisburseLoanJob implements ShouldQueue
     }
 
     public function handle(): void
-    {
-        Log::info("Starting DisburseLoanJob for Loan ID: {$this->loan->id}");
+{
+    Log::info("Starting DisburseLoanJob for Loan ID: {$this->loan->id}");
 
-        $loan = Loan::find($this->loan->id);
-        if (!$loan || $loan->status !== 'pending') return;
-        $client = new \GuzzleHttp\Client([
-            'base_uri' => 'https://sandbox.intasend.com/api/v1/',
-            'headers' => [
-                'Authorization' => 'Bearer ' . config('services.intasend.api_key'),
-                'Accept' => 'application/json',
-            ],
+    $loan = Loan::find($this->loan->id);
+    if (!$loan || $loan->status !== 'pending') return;
+
+    DB::beginTransaction();
+
+    try {
+        $service = new LoanDisbursementService();
+        $result = $service->disburseToMobile($loan);
+
+        if (!$result['success']) {
+            DB::rollBack();
+            Log::error("Loan disbursement failed for Loan ID: {$loan->id}", ['error' => $result['error']]);
+            return;
+        }
+
+        $loan->update([
+            'status' => 'active',
+            'disbursed_at' => now(),
+            'transaction_id' => 'TXN-' . strtoupper(\Str::random(8)),
+            'disbursement_tracking_id' => $result['tracking_id'],
+            // optionally generate repayment_invoice_id here
+            'repayment_invoice_id' => 'INV-' . strtoupper(\Str::random(8)),
         ]);
 
-        DB::beginTransaction();
-
-        try {
-            $service = new LoanDisbursementService();
-            $success = $service->disburseToMobile($loan);
-
-            if (!$success) {
-                DB::rollBack();
-                Log::error("Disbursement failed for Loan ID: {$loan->id}");
-                return;
+        if ($loan->access_code_id) {
+            $code = AgentAccessCode::find($loan->access_code_id);
+            if ($code && !$code->used) {
+                $code->update(['used' => true, 'used_at' => now()]);
             }
-
-            $loan->update([
-                'status' => 'active',
-                'disbursed_at' => now(),
-                'transaction_id' => 'TXN-' . strtoupper(\Str::random(8)),
-            ]);
-
-            DB::commit();
-
-            // Mark agent code used
-            if ($loan->access_code_id) {
-                $code = AgentAccessCode::find($loan->access_code_id);
-                if ($code && !$code->used) {
-                    $code->update(['used' => true, 'used_at' => now()]);
-                }
-            }
-
-            Log::info("DisburseLoanJob completed for Loan ID: {$loan->id}");
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error("Disbursement error for Loan ID: {$loan->id}", ['error' => $e->getMessage()]);
         }
+
+        DB::commit();
+        Log::info("DisburseLoanJob completed for Loan ID: {$loan->id}");
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        Log::error("Disbursement error for Loan ID: {$loan->id}", ['error' => $e->getMessage()]);
     }
+}
 }
